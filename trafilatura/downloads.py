@@ -84,7 +84,7 @@ def _determine_headers(config, headers=None):
 
 def _send_request(url, no_ssl, config):
     "Internal function to robustly send a request (SSL or not) and return its result."
-    proxy = config.get('DEFAULT', 'HTTP_PROXY')
+    proxy = config.get('DEFAULT', 'HTTP_PROXY_URL')
     proxy_auth = config.get('DEFAULT', 'HTTP_PROXY_AUTH')
     # customize headers
     global HTTP_POOL, NO_CERT_POOL, RETRY_STRATEGY

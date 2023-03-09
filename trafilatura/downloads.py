@@ -46,7 +46,8 @@ NO_CERT_POOL = None
 RETRY_STRATEGY = None
 
 DEFAULT_HEADERS = urllib3.util.make_headers(accept_encoding=True)
-USER_AGENT = 'trafilatura/' + __version__ + ' (+https://github.com/adbar/trafilatura)'
+USER_AGENT = 'trafilatura/' + __version__ + \
+    ' (+https://github.com/adbar/trafilatura)'
 DEFAULT_HEADERS['User-Agent'] = USER_AGENT
 
 LOGGER = logging.getLogger(__name__)
@@ -83,12 +84,14 @@ def _determine_headers(config, headers=None):
 
 def _send_request(url, no_ssl, config):
     "Internal function to robustly send a request (SSL or not) and return its result."
+    proxy = config.get('DEFAULT', 'HTTP_PROXY')
+    proxy_auth = config.get('DEFAULT', 'HTTP_PROXY_AUTH')
     # customize headers
     global HTTP_POOL, NO_CERT_POOL, RETRY_STRATEGY
     if not RETRY_STRATEGY:
         RETRY_STRATEGY = urllib3.util.Retry(
             total=0,
-            redirect=MAX_REDIRECTS, # raise_on_redirect=False,
+            redirect=MAX_REDIRECTS,  # raise_on_redirect=False,
             connect=0,
             backoff_factor=config.getint('DEFAULT', 'DOWNLOAD_TIMEOUT')*2,
             status_forcelist=[
@@ -102,15 +105,31 @@ def _send_request(url, no_ssl, config):
         if no_ssl is False:
             # define pool
             if not HTTP_POOL:
-                HTTP_POOL = urllib3.PoolManager(retries=RETRY_STRATEGY, timeout=config.getint('DEFAULT', 'DOWNLOAD_TIMEOUT'), ca_certs=certifi.where(), num_pools=NUM_CONNECTIONS)  # cert_reqs='CERT_REQUIRED'
+                if not proxy:
+                    HTTP_POOL = urllib3.PoolManager(retries=RETRY_STRATEGY, timeout=config.getint(
+                        'DEFAULT', 'DOWNLOAD_TIMEOUT'), ca_certs=certifi.where(), num_pools=NUM_CONNECTIONS)  # cert_reqs='CERT_REQUIRED'
+                else:
+                    proxy_headers = urllib3.make_headers(
+                        proxy_basic_auth=proxy_auth) if proxy_auth else urllib3.make_headers()
+                    HTTP_POOL = urllib3.ProxyManager(proxy, proxy_headers=proxy_headers, retries=RETRY_STRATEGY, timeout=config.getint(
+                        'DEFAULT', 'DOWNLOAD_TIMEOUT'), ca_certs=certifi.where(), num_pools=NUM_CONNECTIONS)  # cert_reqs='CERT_REQUIRED'
             # execute request
-            response = HTTP_POOL.request('GET', url, headers=_determine_headers(config))
+            response = HTTP_POOL.request(
+                'GET', url, headers=_determine_headers(config))
         else:
             # define pool
             if not NO_CERT_POOL:
-                NO_CERT_POOL = urllib3.PoolManager(retries=RETRY_STRATEGY, timeout=config.getint('DEFAULT', 'DOWNLOAD_TIMEOUT'), cert_reqs='CERT_NONE', num_pools=NUM_CONNECTIONS)
+                if not proxy:
+                    NO_CERT_POOL = urllib3.PoolManager(retries=RETRY_STRATEGY, timeout=config.getint(
+                        'DEFAULT', 'DOWNLOAD_TIMEOUT'), cert_reqs='CERT_NONE', num_pools=NUM_CONNECTIONS)
+                else:
+                    proxy_headers = urllib3.make_headers(
+                        proxy_basic_auth=proxy_auth) if proxy_auth else urllib3.make_headers()
+                    NO_CERT_POOL = urllib3.ProxyManager(proxy, proxy_headers=proxy_headers, retries=RETRY_STRATEGY, timeout=config.getint(
+                        'DEFAULT', 'DOWNLOAD_TIMEOUT'), cert_reqs='CERT_NONE', num_pools=NUM_CONNECTIONS)
             # execute request
-            response = NO_CERT_POOL.request('GET', url, headers=_determine_headers(config))
+            response = NO_CERT_POOL.request(
+                'GET', url, headers=_determine_headers(config))
     except urllib3.exceptions.SSLError:
         LOGGER.error('retrying after SSLError: %s', url)
         return _send_request(url, True, config)
@@ -131,7 +150,8 @@ def _handle_response(url, response, decode, config):
         LOGGER.error('too small/incorrect for URL %s', url)
         # raise error instead?
     elif len(response.data) > config.getint('DEFAULT', 'MAX_FILE_SIZE'):
-        LOGGER.error('too large: length %s for URL %s', len(response.data), url)
+        LOGGER.error('too large: length %s for URL %s',
+                     len(response.data), url)
         # raise error instead?
     else:
         return decode_response(response.data) if decode is True else response
@@ -175,7 +195,8 @@ def add_to_compressed_dict(inputlist, blacklist=None, url_filter=None, url_store
     inputlist = uniquify_list(inputlist)
     # filter
     if blacklist:
-        inputlist = [u for u in inputlist if re.sub(r'https?://', '', u) not in blacklist]
+        inputlist = [u for u in inputlist if re.sub(
+            r'https?://', '', u) not in blacklist]
     if url_filter:
         filtered_list = []
         while inputlist:
@@ -212,7 +233,8 @@ def buffered_downloads(bufferlist, download_threads, decode=True):
     '''Download queue consumer, single- or multi-threaded.'''
     # start several threads
     with ThreadPoolExecutor(max_workers=download_threads) as executor:
-        future_to_url = {executor.submit(fetch_url, url, decode): url for url in bufferlist}
+        future_to_url = {executor.submit(
+            fetch_url, url, decode): url for url in bufferlist}
         for future in as_completed(future_to_url):
             # url and download result
             yield future_to_url[future], future.result()
@@ -239,7 +261,8 @@ def _send_pycurl_request(url, no_ssl, config):
     # curl.setopt(pycurl.USERAGENT, '')
     curl.setopt(pycurl.FOLLOWLOCATION, 1)
     curl.setopt(pycurl.MAXREDIRS, MAX_REDIRECTS)
-    curl.setopt(pycurl.CONNECTTIMEOUT, config.getint('DEFAULT', 'DOWNLOAD_TIMEOUT'))
+    curl.setopt(pycurl.CONNECTTIMEOUT, config.getint(
+        'DEFAULT', 'DOWNLOAD_TIMEOUT'))
     curl.setopt(pycurl.TIMEOUT, config.getint('DEFAULT', 'DOWNLOAD_TIMEOUT'))
     curl.setopt(pycurl.NOSIGNAL, 1)
     if no_ssl is True:
@@ -272,7 +295,7 @@ def _send_pycurl_request(url, no_ssl, config):
 
     # https://github.com/pycurl/pycurl/blob/master/examples/quickstart/response_headers.py
     #respheaders = dict()
-    #for header_line in headerbytes.getvalue().decode('iso-8859-1').splitlines(): # re.split(r'\r?\n',
+    # for header_line in headerbytes.getvalue().decode('iso-8859-1').splitlines(): # re.split(r'\r?\n',
     #    # This will botch headers that are split on multiple lines...
     #    if ':' not in header_line:
     #        continue
